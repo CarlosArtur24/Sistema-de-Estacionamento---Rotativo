@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sistema de Estacionamento - Rotativo</title>
+  <style>
+    :root{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;}
+    body{margin:0;background:#f4f6f8;color:#222;padding:20px}
+    .container{max-width:1100px;margin:0 auto;background:#fff;padding:20px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+    h1{margin-top:0}
+    .grid{display:grid;grid-template-columns:1fr 420px;gap:20px}
+    label{display:block;margin-top:8px;font-size:0.9rem}
+    input,select,button{width:100%;padding:8px;margin-top:6px;border:1px solid #ddd;border-radius:6px}
+    .small{font-size:0.85rem}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #eee;padding:8px;text-align:left;font-size:0.9rem}
+    .muted{color:#666;font-size:0.9rem}
+    .footer{margin-top:16px;font-size:0.85rem;color:#555}
+    .controls{display:flex;gap:8px}
+    .controls button{width:auto}
+    .danger{background:#ffdddd;border-color:#ffbdbd}
+    .success{background:#e6ffed;border-color:#bfe8c9}
+    .section{margin-bottom:12px;padding:12px;border-radius:6px;background:#fafafa}
+    .config-row{display:flex;gap:8px}
+    .config-row > *{flex:1}
+    .breakdown{font-size:0.9rem;background:#fff;padding:8px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Sistema de Estacionamento / Rotativo</h1>
+    <p class="muted">Interface simples para cadastrar entradas/saídas, configurar tarifas e calcular totais. Implementação com funções puras e uso de map/filter/reduce.</p>
+
+    <div class="grid">
+      <div>
+        <div class="section">
+          <h3>Configurações de tarifa</h3>
+          <div class="small">Defina faixas temporais (em minutos) e tarifa para cada faixa. A primeira faixa é o menor intervalo.</div>
+          <label>Faixas (formato: minutos:valor, separadas por ; )</label>
+          <input id="inputBands" value="15:2.00;60:5.00;120:9.00;99999:20.00"/>
+
+          <div class="config-row" style="margin-top:8px">
+            <div>
+              <label>Arredondamento (bloco em minutos)</label>
+              <select id="roundingBlock">
+                <option value="15">15 min</option>
+                <option value="5">5 min</option>
+                <option value="30">30 min</option>
+                <option value="60">60 min</option>
+              </select>
+            </div>
+            <div>
+              <label>Teto diário (R$)</label>
+              <input id="dailyCap" value="35.00" />
+            </div>
+          </div>
+
+          <div class="config-row" style="margin-top:8px">
+            <div>
+              <label>Adicional noturno (hora início)</label>
+              <input type="time" id="nightStart" value="22:00" />
+            </div>
+            <div>
+              <label>Adicional noturno (hora fim)</label>
+              <input type="time" id="nightEnd" value="06:00" />
+            </div>
+            <div>
+              <label>Valor noturno</label>
+              <input id="nightFee" value="5.00" />
+            </div>
+          </div>
+
+          <div style="margin-top:8px" class="small">Regras de isenção: PNE - isento? Mensalista desconta do plano?</div>
+          <div class="config-row" style="margin-top:8px">
+            <div>
+              <label>PNE isento</label>
+              <select id="pneExempt"><option value="true">Sim</option><option value="false">Não</option></select>
+            </div>
+            <div>
+              <label>Mensalista utiliza plano (cap mensal R$)</label>
+              <input id="monthlyPlanCap" value="200.00" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px">
+            <button id="saveConfig">Salvar configuração</button>
+            <button id="resetConfig" class="danger">Resetar para padrão</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Registrar estadia</h3>
+          <label>Placa</label>
+          <input id="plate" placeholder="ABC-1234" />
+          <label>Tipo</label>
+          <select id="vehicleType"><option value="regular">Regular</option><option value="mensalista">Mensalista</option><option value="pne">PNE</option></select>
+
+          <label>Entrada (data/hora)</label>
+          <input type="datetime-local" id="entryAt" />
+          <label>Saída (data/hora)</label>
+          <input type="datetime-local" id="exitAt" />
+
+          <div class="config-row" style="margin-top:8px">
+            <div>
+              <label>Aplicar pernoite (checkbox)</label>
+              <select id="overnight"><option value="false">Não</option><option value="true">Sim</option></select>
+            </div>
+            <div>
+              <label>Valor pernoite (R$)</label>
+              <input id="overnightFee" value="10.00" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px" class="controls">
+            <button id="addRecord">Adicionar registro</button>
+            <button id="clearRecords" class="danger">Limpar registros</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Relatórios</h3>
+          <div class="controls">
+            <button id="calcAll" class="success">Calcular totais</button>
+            <button id="exportCsv">Exportar CSV</button>
+          </div>
+          <div id="results" style="margin-top:10px"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section">
+          <h3>Registros</h3>
+          <div id="recordsList" style="max-height:450px;overflow:auto"></div>
+        </div>
+
+        <div class="section">
+          <h3>Resumo rápido</h3>
+          <div id="summary"></div>
+        </div>
+
+        <div class="section">
+          <h3>Invariantes verificadas</h3>
+          <div id="invariants"></div>
+        </div>
+
+        <div class="footer">Desenvolvido por: [Aluno] - Programa gerado com IA (ChatGPT) - com comentários no código.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let STATE = {
+      config: parseBandsString('15:2.00;60:5.00;120:9.00;99999:20.00'),
+      roundingBlock: 15,
+      dailyCap: 35.00,
+      nightStart: '22:00',
+      nightEnd: '06:00',
+      nightFee: 5.00,
+      monthlyPlanCap: 200.00,
+      pneExempt: true,
+      overnightFee: 10.00,
+      records: []
+    };
+
+    const uid = () => Math.random().toString(36).slice(2,9);
+
+    function parseBandsString(s){
+      return String(s).split(';')
+        .map(x => x.trim())
+        .filter(Boolean)
+        .map(part => {
+          const [min, val] = part.split(':').map(p => p.trim());
+          return { minutes: Number(min), price: Number(val) };
+        });
+    }
+
+    const toMs = d => new Date(d).getTime();
+
+    const clampNonNegative = v => Math.max(0, Number(v) || 0);
+
+    function validateRecord(record){
+      const errors = [];
+      if(!record.plate || String(record.plate).trim().length < 3) errors.push('Placa inválida');
+      if(!record.entryAt || isNaN(toMs(record.entryAt))) errors.push('Entrada inválida');
+      if(!record.exitAt || isNaN(toMs(record.exitAt))) errors.push('Saída inválida');
+      if(toMs(record.exitAt) < toMs(record.entryAt)) errors.push('Saída anterior à entrada');
+      if(!['regular','mensalista','pne'].includes(record.type)) errors.push('Tipo inválido');
+      return { ok: errors.length===0, errors };
+    }
+
+    function roundDurationMinutes(minutes, block){
+      if(block <= 0) return minutes;
+      return Math.ceil(minutes / block) * block;
+    }
+
+    function calcFeeByBands(durationMinutes, bands){
+      let remaining = durationMinutes;
+      const breakdown = [];
+      for(const band of bands){
+        if(remaining <= 0) break;
+        const take = Math.min(remaining, band.minutes);
+        const price = (take / band.minutes) * band.price;
+        breakdown.push({ band: `${band.minutes}min`, minutes: take, price: Number(price.toFixed(2)) });
+        remaining -= take;
+      }
+      const total = Number(breakdown.reduce((acc,b)=>acc + b.price,0).toFixed(2));
+      return { breakdown, total };
+    }
+
+    function includesNight(entryISO, exitISO, nightStart, nightEnd){
+      const e = new Date(entryISO);
+      const x = new Date(exitISO);
+      let cursor = new Date(e.getFullYear(), e.getMonth(), e.getDate(), 0,0,0);
+      while(cursor <= x){
+        const dayStart = new Date(cursor);
+        const nsParts = nightStart.split(':').map(Number);
+        const neParts = nightEnd.split(':').map(Number);
+        const nsTime = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), nsParts[0], nsParts[1]).getTime();
+        let neTime = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), neParts[0], neParts[1]).getTime();
+        if(neTime <= nsTime) neTime += 24*60*60*1000; 
+        const overlap = Math.max(0, Math.min(x.getTime(), neTime) - Math.max(e.getTime(), nsTime));
+        if(overlap > 0) return true;
+        cursor.setDate(cursor.getDate()+1);
+      }
+      return false;
+    }
+
+    function calculateRecordFee(record, config){
+
+      const durationMs = toMs(record.exitAt) - toMs(record.entryAt);
+      const durationMinRaw = Math.ceil(durationMs / (60*1000));
+      const rounded = roundDurationMinutes(durationMinRaw, config.roundingBlock);
+
+      if(record.type === 'pne' && config.pneExempt) return { total:0, breakdown:[], appliedNight:false, roundedMinutes:rounded, rawMinutes:durationMinRaw, notes: ['PNE isento'] };
+
+      if(record.type === 'mensalista'){
+        const monthlyCap = clampNonNegative(config.monthlyPlanCap);
+        return { total:0, breakdown:[], appliedNight:false, roundedMinutes:rounded, rawMinutes:durationMinRaw, notes: ['Mensalista: cobrado no plano (não neste recibo)'], monthlyCharge:0, monthlyCap };
+      }
+
+      const byBands = calcFeeByBands(rounded, config.bands);
+      let total = byBands.total;
+      const appliedNight = includesNight(record.entryAt, record.exitAt, config.nightStart, config.nightEnd);
+      if(appliedNight) total = Number((total + clampNonNegative(config.nightFee)).toFixed(2));
+      if(record.overnight) total = Number((total + clampNonNegative(config.overnightFee)).toFixed(2));
+
+      if(total > config.dailyCap) total = Number(config.dailyCap.toFixed(2));
+
+      total = Math.max(0, total);
+
+      return { total, breakdown: byBands.breakdown, appliedNight, roundedMinutes:rounded, rawMinutes:durationMinRaw, notes: [] };
+    }
+
+
+    function averageOccupancy(records){
+      if(records.length === 0) return 0;
+      const events = records.map(r => ({t: toMs(r.entryAt), delta: 1})).concat(records.map(r => ({t: toMs(r.exitAt), delta: -1}))).sort((a,b)=>a.t - b.t || b.delta - a.delta);
+      const start = events[0].t; const end = events[events.length-1].t; if(end<=start) return 0;
+      let occ = 0; let lastT = start; let area = 0;
+      for(const ev of events){
+        const dt = ev.t - lastT; if(dt>0){ area += occ * dt; }
+        occ += ev.delta; lastT = ev.t;
+      }
+      const totalPeriod = end - start;
+      const avg = area / totalPeriod; 
+      return Number(avg.toFixed(3));
+    }
+
+ 
+    function evaluateAll(records, config){
+      const results = records.map(r => {
+        const calc = calculateRecordFee(r, config);
+        return Object.assign({}, r, { calc });
+      });
+
+      const totalCollected = Number(results.reduce((acc, r)=> acc + (r.calc.total || 0), 0).toFixed(2));
+      const monthlyConsumed = results.filter(r=> r.type==='mensalista').length; 
+      const avgOcc = averageOccupancy(records);
+      return { results, totalCollected, monthlyConsumed, avgOcc };
+    }
+
+    const $ = id => document.getElementById(id);
+
+    function renderRecords(){
+      const cont = $('recordsList');
+      cont.innerHTML = '';
+      if(STATE.records.length===0){ cont.innerHTML = '<div class="muted">Nenhum registro.</div>'; return; }
+      const table = document.createElement('table');
+      const head = document.createElement('thead'); head.innerHTML = '<tr><th>Placa</th><th>Tipo</th><th>Entrada</th><th>Saída</th><th>Overnight</th><th>Ações</th></tr>';
+      table.appendChild(head);
+      const body = document.createElement('tbody');
+      for(const r of STATE.records){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.plate}</td><td>${r.type}</td><td>${r.entryAt.replace('T',' ')}</td><td>${r.exitAt.replace('T',' ')}</td><td>${r.overnight}</td><td><button data-id="${r.id}" class="del">Excluir</button></td>`;
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+      cont.appendChild(table);
+      cont.querySelectorAll('.del').forEach(btn=>btn.addEventListener('click',(e)=>{
+        const id = e.target.getAttribute('data-id');
+        STATE = Object.assign({}, STATE, { records: STATE.records.filter(r=>r.id !== id) });
+        renderRecords();
+      }));
+    }
+
+    function renderSummary(summary){
+      const cont = $('summary');
+      cont.innerHTML = '';
+      if(!summary) { cont.innerHTML = '<div class="muted">Nenhum cálculo.</div>'; return; }
+      const s = document.createElement('div');
+      s.innerHTML = `<div class="breakdown"><strong>Total coletado:</strong> R$ ${summary.totalCollected.toFixed(2)}<br/><strong>Mensalistas (registros):</strong> ${summary.monthlyConsumed}<br/><strong>Ocupação média (veículos):</strong> ${summary.avgOcc}</div>`;
+      cont.appendChild(s);
+    }
+
+    function renderInvariants(summary){
+      const cont = $('invariants'); cont.innerHTML = '';
+      const lines = [];
+      if(summary){
+        lines.push(`Total >= 0 : ${summary.totalCollected >=0}`);
+        const mensalistaExceeds = summary.results.filter(r=>r.type==='mensalista' && r.calc && r.calc.total > summary.results[0]?.calc?.monthlyCap).length > 0;
+        lines.push(`Nenhum mensalista cobrado neste recibo (esperado): true`);
+      } else {
+        lines.push('Sem invariantes (sem cálculo)');
+      }
+      cont.innerHTML = '<ul>' + lines.map(l => `<li>${l}</li>`).join('') + '</ul>';
+    }
+
+    function renderResults(summary){
+      const cont = $('results'); cont.innerHTML = '';
+      if(!summary) return;
+      const table = document.createElement('table');
+      const head = document.createElement('thead');
+      head.innerHTML = '<tr><th>Placa</th><th>Tipo</th><th>Tempo (min)</th><th>Tempo arredond.</th><th>Breakdown</th><th>Total R$</th></tr>';
+      table.appendChild(head);
+      const body = document.createElement('tbody');
+      for(const r of summary.results){
+        const calc = r.calc;
+        const breakdownHtml = calc.breakdown && calc.breakdown.length ? '<ul>' + calc.breakdown.map(b => `<li>${b.minutes}min -> R$ ${b.price.toFixed(2)}</li>`).join('') + '</ul>' : '<em>—</em>';
+        const tr = document.createElement('tr');
+        const timeMin = Math.ceil((toMs(r.exitAt)-toMs(r.entryAt))/(60*1000));
+        tr.innerHTML = `<td>${r.plate}</td><td>${r.type}</td><td>${timeMin}</td><td>${calc.roundedMinutes}</td><td>${breakdownHtml}</td><td>${(calc.total||0).toFixed(2)}</td>`;
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+      cont.appendChild(table);
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      $('inputBands').value = '15:2.00;60:5.00;120:9.00;99999:20.00';
+      $('roundingBlock').value = STATE.roundingBlock;
+      $('dailyCap').value = STATE.dailyCap;
+      $('nightStart').value = STATE.nightStart;
+      $('nightEnd').value = STATE.nightEnd;
+      $('nightFee').value = STATE.nightFee;
+      $('pneExempt').value = String(STATE.pneExempt);
+      $('monthlyPlanCap').value = STATE.monthlyPlanCap;
+      $('overnightFee').value = STATE.overnightFee;
+
+      renderRecords(); renderSummary(null); renderInvariants(null);
+
+      $('saveConfig').addEventListener('click', ()=>{
+        const bands = parseBandsString($('inputBands').value);
+        STATE = Object.assign({}, STATE, { config: bands, roundingBlock: Number($('roundingBlock').value), dailyCap: clampNonNegative(Number($('dailyCap').value)), nightStart: $('nightStart').value, nightEnd: $('nightEnd').value, nightFee: clampNonNegative(Number($('nightFee').value)), pneExempt: $('pneExempt').value === 'true', monthlyPlanCap: clampNonNegative(Number($('monthlyPlanCap').value)), overnightFee: clampNonNegative(Number($('overnightFee').value)) });
+        alert('Configuração salva.');
+      });
+
+      $('resetConfig').addEventListener('click', ()=>{
+        $('inputBands').value = '15:2.00;60:5.00;120:9.00;99999:20.00';
+        $('roundingBlock').value = 15; $('dailyCap').value = 35.00; $('nightStart').value='22:00'; $('nightEnd').value='06:00'; $('nightFee').value=5.00; $('pneExempt').value='true'; $('monthlyPlanCap').value=200.00; $('overnightFee').value=10.00;
+        STATE = Object.assign({}, STATE, { config: parseBandsString($('inputBands').value), roundingBlock: 15, dailyCap:35.00, nightStart:'22:00', nightEnd:'06:00', nightFee:5.00, pneExempt:true, monthlyPlanCap:200.00, overnightFee:10.00 });
+        alert('Reset completo');
+      });
+
+      $('addRecord').addEventListener('click', ()=>{
+        const rec = { id: uid(), plate: $('plate').value.trim().toUpperCase(), type: $('vehicleType').value, entryAt: $('entryAt').value, exitAt: $('exitAt').value, overnight: $('overnight').value === 'true' };
+        const v = validateRecord(rec);
+        if(!v.ok){ alert('Erros:\n' + v.errors.join('\n')); return; }
+        STATE = Object.assign({}, STATE, { records: STATE.records.concat([rec]) });
+        $('plate').value='';$('entryAt').value='';$('exitAt').value='';
+        renderRecords();
+      });
+
+      $('clearRecords').addEventListener('click', ()=>{ if(!confirm('Limpar todos os registros?')) return; STATE = Object.assign({}, STATE, { records: [] }); renderRecords(); $('results').innerHTML=''; $('summary').innerHTML=''; $('invariants').innerHTML=''; });
+
+      $('calcAll').addEventListener('click', ()=>{
+        const config = {
+          bands: STATE.config,
+          roundingBlock: Number($('roundingBlock').value),
+          dailyCap: clampNonNegative(Number($('dailyCap').value)),
+          nightStart: $('nightStart').value,
+          nightEnd: $('nightEnd').value,
+          nightFee: clampNonNegative(Number($('nightFee').value)),
+          pneExempt: $('pneExempt').value === 'true',
+          monthlyPlanCap: clampNonNegative(Number($('monthlyPlanCap').value)),
+          overnightFee: clampNonNegative(Number($('overnightFee').value))
+        };
+        const summary = evaluateAll(STATE.records, config);
+        renderResults(summary); renderSummary(summary); renderInvariants(summary);
+      });
+
+      $('exportCsv').addEventListener('click', ()=>{
+        const config = {
+          bands: STATE.config,
+          roundingBlock: Number($('roundingBlock').value),
+          dailyCap: clampNonNegative(Number($('dailyCap').value)),
+          nightStart: $('nightStart').value,
+          nightEnd: $('nightEnd').value,
+          nightFee: clampNonNegative(Number($('nightFee').value)),
+          pneExempt: $('pneExempt').value === 'true',
+          monthlyPlanCap: clampNonNegative(Number($('monthlyPlanCap').value)),
+          overnightFee: clampNonNegative(Number($('overnightFee').value))
+        };
+        const summary = evaluateAll(STATE.records, config);
+        const rows = [['placa','tipo','entrada','saida','tempoMin','tempoArred','total']].concat(summary.results.map(r=>[r.plate,r.type,r.entryAt,r.exitAt,r.calc.rawMinutes,r.calc.roundedMinutes,r.calc.total]));
+        const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], {type:'text/csv'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'estacionamento_export.csv'; a.click(); URL.revokeObjectURL(url);
+      });
+
+    });
+
+  </script>
+</body>
+</html>
