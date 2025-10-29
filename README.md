@@ -129,6 +129,5 @@ Durante o cálculo, o sistema confirma:
 
 ## 📚 Créditos
 
-Desenvolvido por **[Aluno]**.
-Gerado e comentado com auxílio da **IA (ChatGPT)**.
+Desenvolvido por **Carlos Artur Ceola**.
 Implementação totalmente em **JavaScript funcional**, com HTML e CSS integrados para execução direta no navegador.
